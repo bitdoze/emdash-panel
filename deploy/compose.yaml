@@ -56,6 +56,8 @@ services:
     volumes:
       - panel-data:/data
       - caddy-logs:/site-logs:ro
+      # Backup archives for downloads (worker writes them; panel serves them).
+      - ${INSTALL_DIR:-/opt/emdash}/backups:/backups:ro
       # Site data volumes for the file manager (panel writes as root and
       # chowns to uid 1000 so site containers keep write access).
       - /var/lib/docker/volumes:/volumes
