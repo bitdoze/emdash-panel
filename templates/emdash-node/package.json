@@ -1,0 +1,29 @@
+{
+	"name": "emdash-site",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"emdash": {
+		"label": "Starter",
+		"seed": "seed/seed.json"
+	},
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"start": "node ./dist/server/entry.mjs",
+		"typecheck": "astro check"
+	},
+	"dependencies": {
+		"@astrojs/node": "^11.1.5",
+		"@astrojs/react": "^6.0.5",
+		"@aws-sdk/client-s3": "^3.1152.0",
+		"@aws-sdk/s3-request-presigner": "^3.1152.0",
+		"@emdash-cms/sandbox-workerd": "^0.9.3",
+		"astro": "^7.3.2",
+		"emdash": "^1.2.0",
+		"pg": "^8.23.1",
+		"react": "19.2.4",
+		"react-dom": "19.2.4",
+		"workerd": "^1.20261015.1"
+	}
+}

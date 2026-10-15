@@ -1,0 +1,115 @@
+# EmDash Panel — reference deployment.
+# Rendered/used by scripts/install.sh; expects /opt/emdash/env (or --env-file).
+name: emdashd
+
+networks:
+  # Management plane: panel, worker, caddy, optional postgres.
+  mgmt:
+    name: emdashd-mgmt
+    driver: bridge
+  # Shared PostgreSQL data path. Only the postgres service and sites that
+  # selected postgres join this network — database-level grants are the real
+  # isolation boundary (see docs/operations.md).
+  pg:
+    name: emdashd-pg
+    driver: bridge
+
+services:
+  caddy:
+    image: caddy:2.10.2-alpine
+    container_name: emdashd-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+      - caddy-run:/run/caddy
+      - ${INSTALL_DIR:-/opt/emdash}/deploy/caddy.json:/etc/caddy/caddy.json:ro
+    command: ["caddy", "run", "--config", "/etc/caddy/caddy.json", "--resume"]
+    networks: [mgmt]
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /run/caddy/admin.sock"]
+
+  panel:
+    image: ${PANEL_IMAGE:-emdash-panel:local}
+    container_name: emdashd-panel
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: file:/data/panel.db
+      ORIGIN: https://${PANEL_HOSTNAME}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      PANEL_MASTER_KEY: ${PANEL_MASTER_KEY}
+      PASSKEY_RP_ID: ${PANEL_HOSTNAME}
+      # UI gates the postgres engine option on this being set.
+      POSTGRES_ADMIN_URL: ${POSTGRES_ADMIN_URL:-}
+      PORT: "3000"
+      HOST: 0.0.0.0
+    volumes:
+      - panel-data:/data
+    networks: [mgmt]
+    depends_on:
+      - worker
+
+  worker:
+    image: ${PANEL_IMAGE:-emdash-panel:local}
+    container_name: emdashd-worker
+    restart: unless-stopped
+    command: ["./node_modules/.bin/tsx", "worker/main.ts"]
+    environment:
+      DATABASE_URL: file:/data/panel.db
+      PANEL_MASTER_KEY: ${PANEL_MASTER_KEY}
+      ORIGIN: https://${PANEL_HOSTNAME}
+      INSTALLATION_ID: ${INSTALLATION_ID:-local}
+      EMDASH_SITE_IMAGE: ${EMDASH_SITE_IMAGE:-emdashd-site}
+      DOCKER_SOCKET: /var/run/docker.sock
+      CADDY_ADMIN_SOCKET: /run/caddy/admin.sock
+      CADDY_CONTAINER: emdashd-caddy
+      PG_NETWORK: emdashd-pg
+      POSTGRES_ADMIN_URL: ${POSTGRES_ADMIN_URL:-}
+      BACKUP_DIR: /backups
+    volumes:
+      - panel-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - caddy-run:/run/caddy
+      - ${INSTALL_DIR:-/opt/emdash}/backups:/backups
+    networks: [mgmt]
+    # The worker has no HTTP server — its heartbeat is the metrics sampler
+    # writing to metrics_samples every 15s. Unhealthy if none is <90s old.
+    healthcheck:
+      # metrics_samples.ts is unix seconds (drizzle integer timestamp mode).
+      test: ["CMD-SHELL", "node -e \"const{DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('/data/panel.db',{readOnly:true});const r=db.prepare('SELECT MAX(ts) t FROM metrics_samples').get();process.exit(r&&r.t&&Date.now()-r.t*1000<90000?0:1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      caddy:
+        condition: service_started
+
+  # Optional managed PostgreSQL. Enable with: manage.sh --profile postgres up -d
+  postgres:
+    image: postgres:18-alpine
+    container_name: emdashd-postgres
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      # Interpolated even when the postgres profile is inactive, so keep a plain
+      # default — install.sh only enables this service when the secret exists.
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-}
+    volumes:
+      # postgres:18+ requires the volume at /var/lib/postgresql (PGDATA lives in
+      # a subdirectory so pg_upgrade --link works across major versions).
+      - pg-data:/var/lib/postgresql
+    networks: [mgmt, pg]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+
+volumes:
+  caddy-data:
+  caddy-config:
+  caddy-run:
+  panel-data:
+  pg-data:

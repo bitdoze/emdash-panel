@@ -1,0 +1,36 @@
+{
+	"admin": {
+		"listen": "unix//run/caddy/admin.sock",
+		"enforce_origin": false,
+		"origins": [""]
+	},
+	"storage": { "module": "file_system", "root": "/data/caddy" },
+	"apps": {
+		"http": {
+			"servers": {
+				"main": {
+					"listen": [":443"],
+					"routes": [
+						{
+							"@id": "panel",
+							"match": [{ "host": ["__PANEL_HOSTNAME__"] }],
+							"handle": [
+								{
+									"handler": "reverse_proxy",
+									"upstreams": [{ "dial": "panel:3000" }],
+									"headers": {
+										"request": {
+											"set": { "X-Forwarded-Host": ["{http.request.host}"] }
+										}
+									}
+								}
+							],
+							"terminal": true
+						}
+					]
+				}
+			}
+		}
+	},
+	"logging": { "logs": { "default": { "level": "WARN" } } }
+}
