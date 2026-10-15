@@ -40,8 +40,15 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}'],
-					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
+					globalSetup: './tests/global-setup.ts',
+					include: ['src/**/*.{test,spec}.{js,ts}', 'worker/**/*.{test,spec}.{js,ts}'],
+					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}'],
+					env: {
+						// Isolated throwaway database + a fixed 32-byte test key.
+						DATABASE_URL: 'file:/tmp/emdash-panel-vitest.db',
+						PANEL_MASTER_KEY: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=',
+						ORIGIN: 'https://panel.test'
+					}
 				}
 			}
 		]
