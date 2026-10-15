@@ -2,13 +2,20 @@ import { error, fail } from '@sveltejs/kit';
 import { desc, eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '#lib/server/db/index';
-import { backups, domains, jobs, secretRecords, sites } from '#lib/server/db/schema';
+import { backups, deployments, domains, jobs, secretRecords, sites } from '#lib/server/db/schema';
 import { decryptSecret } from '#lib/server/secrets';
 import { enqueueJob, siteHasActiveJob } from '#lib/server/jobs/queue';
 import { recordAudit } from '#lib/server/audit';
+import { metricsHistory } from '#lib/server/metrics';
+import { readSiteTraffic } from '#lib/server/sitelogs';
 import {
+	LIMITS,
 	hostnameInUse,
+	isValidGitRef,
+	isValidGitUrl,
 	normalizeHostname,
+	parseCpuMillicores,
+	parseMemoryMb,
 	validateSiteDomain
 } from '#lib/server/validate';
 
@@ -16,19 +23,20 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const site = (await db.select().from(sites).where(eq(sites.id, params.id)))[0];
 	if (!site) error(404, 'Site not found');
 
-	const siteDomains = await db.select().from(domains).where(eq(domains.siteId, site.id));
-	const siteJobs = await db
-		.select()
-		.from(jobs)
-		.where(eq(jobs.siteId, site.id))
-		.orderBy(desc(jobs.createdAt))
-		.limit(20);
-	const siteBackups = await db
-		.select()
-		.from(backups)
-		.where(eq(backups.siteId, site.id))
-		.orderBy(desc(backups.createdAt))
-		.limit(20);
+	const [siteDomains, siteJobs, siteBackups, siteDeployments, history] = await Promise.all([
+		db.select().from(domains).where(eq(domains.siteId, site.id)),
+		db.select().from(jobs).where(eq(jobs.siteId, site.id)).orderBy(desc(jobs.createdAt)).limit(15),
+		db.select().from(backups).where(eq(backups.siteId, site.id)).orderBy(desc(backups.createdAt)).limit(10),
+		db
+			.select()
+			.from(deployments)
+			.where(eq(deployments.siteId, site.id))
+			.orderBy(desc(deployments.createdAt))
+			.limit(10),
+		metricsHistory(160)
+	]);
+
+	const traffic = await readSiteTraffic(site.id).catch(() => null);
 
 	// The setup-gate password is only exposed while the site awaits owner setup.
 	let gateCredentials: { username: string; password: string } | null = null;
@@ -50,6 +58,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		targetId: site.id
 	});
 
+	const usageHistory = history.map((h) => {
+		const c = h.payload.containers?.find((x) => x.name === site.containerName);
+		return { ts: h.ts, cpuPct: c?.cpuPct ?? null, memBytes: c?.memBytes ?? null };
+	});
+	const latestUsage = usageHistory[usageHistory.length - 1] ?? null;
+
 	return {
 		site: {
 			id: site.id,
@@ -59,9 +73,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			storageMode: site.storageMode,
 			image: site.image,
 			containerName: site.containerName,
+			sourceRepo: site.sourceRepo,
+			sourceRef: site.sourceRef,
+			cpuMillicores: site.cpuMillicores ?? LIMITS.cpuMillicores.default,
+			memoryMb: site.memoryMb ?? LIMITS.memoryMb.default,
 			error: site.error,
 			createdAt: site.createdAt.toISOString()
 		},
+		limits: LIMITS,
 		domains: siteDomains.map((d) => ({
 			id: d.id,
 			hostname: d.hostname,
@@ -76,6 +95,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			error: j.error,
 			createdAt: j.createdAt.toISOString()
 		})),
+		deployments: siteDeployments.map((d) => ({
+			id: d.id,
+			state: d.state,
+			image: d.image,
+			gitUrl: d.gitUrl,
+			gitRef: d.gitRef,
+			isCurrent: d.isCurrent,
+			error: d.error,
+			createdAt: d.createdAt.toISOString()
+		})),
 		backups: siteBackups.map((b) => ({
 			id: b.id,
 			status: b.status,
@@ -83,6 +112,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			sizeBytes: b.sizeBytes,
 			createdAt: b.createdAt.toISOString()
 		})),
+		usage: latestUsage,
+		usageHistory,
+		traffic,
 		gateCredentials,
 		hasActiveJob: await siteHasActiveJob(site.id)
 	};
@@ -132,6 +164,37 @@ export const actions: Actions = {
 			await db.update(backups).set({ jobId: res.started }).where(eq(backups.id, backup.id));
 		}
 		return res;
+	},
+	updateLimits: async ({ params, request, locals, getClientAddress }) => {
+		const form = await request.formData();
+		const cpu = parseCpuMillicores(String(form.get('cpuMillicores') ?? ''));
+		const mem = parseMemoryMb(String(form.get('memoryMb') ?? ''));
+		if (cpu === null || mem === null) {
+			return fail(400, {
+				error: `Limits out of range (CPU ${LIMITS.cpuMillicores.min}–${LIMITS.cpuMillicores.max} millicores, memory ${LIMITS.memoryMb.min}–${LIMITS.memoryMb.max} MiB)`
+			});
+		}
+		return runSiteAction(
+			params.id,
+			'site.update_limits',
+			{ cpuMillicores: cpu, memoryMb: mem },
+			locals,
+			getClientAddress()
+		);
+	},
+	deploy: async ({ params, request, locals, getClientAddress }) => {
+		const form = await request.formData();
+		const repo = String(form.get('gitUrl') ?? '').trim();
+		const ref = String(form.get('gitRef') ?? '').trim();
+		if (repo && !isValidGitUrl(repo)) return fail(400, { error: 'Invalid repository URL' });
+		if (ref && !isValidGitRef(ref)) return fail(400, { error: 'Invalid ref (branch, tag, or SHA)' });
+		return runSiteAction(
+			params.id,
+			'site.deploy',
+			{ gitUrl: repo || undefined, gitRef: ref || undefined },
+			locals,
+			getClientAddress()
+		);
 	},
 	addDomain: async ({ params, request, locals, getClientAddress }) => {
 		const site = (await db.select().from(sites).where(eq(sites.id, params.id)))[0];

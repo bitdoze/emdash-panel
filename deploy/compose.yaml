@@ -27,6 +27,8 @@ services:
       - caddy-data:/data
       - caddy-config:/config
       - caddy-run:/run/caddy
+      # Per-site JSON access logs, shared with the panel (read-only there).
+      - caddy-logs:/logs
       - ${INSTALL_DIR:-/opt/emdash}/deploy/caddy.json:/etc/caddy/caddy.json:ro
     command: ["caddy", "run", "--config", "/etc/caddy/caddy.json", "--resume"]
     networks: [mgmt]
@@ -45,10 +47,18 @@ services:
       PASSKEY_RP_ID: ${PANEL_HOSTNAME}
       # UI gates the postgres engine option on this being set.
       POSTGRES_ADMIN_URL: ${POSTGRES_ADMIN_URL:-}
+      # Directory holding per-site Caddy access logs (read-only mount).
+      SITE_LOG_DIR: /site-logs
+      # Docker volumes dir for the file manager.
+      SITE_VOLUME_ROOT: /volumes
       PORT: "3000"
       HOST: 0.0.0.0
     volumes:
       - panel-data:/data
+      - caddy-logs:/site-logs:ro
+      # Site data volumes for the file manager (panel writes as root and
+      # chowns to uid 1000 so site containers keep write access).
+      - /var/lib/docker/volumes:/volumes
     networks: [mgmt]
     depends_on:
       - worker
@@ -111,5 +121,6 @@ volumes:
   caddy-data:
   caddy-config:
   caddy-run:
+  caddy-logs:
   panel-data:
   pg-data:

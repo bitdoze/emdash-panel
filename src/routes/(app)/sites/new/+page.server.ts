@@ -6,9 +6,14 @@ import { domains, sites, storageProfiles } from '#lib/server/db/schema';
 import { enqueueJob } from '#lib/server/jobs/queue';
 import { recordAudit } from '#lib/server/audit';
 import {
+	LIMITS,
 	hostnameInUse,
+	isValidGitRef,
+	isValidGitUrl,
 	isValidSiteName,
 	normalizeHostname,
+	parseCpuMillicores,
+	parseMemoryMb,
 	validateSiteDomain
 } from '#lib/server/validate';
 import { envOpt } from '#lib/server/env';
@@ -20,6 +25,7 @@ export const load: PageServerLoad = async () => {
 		.where(eq(storageProfiles.kind, 'media'));
 	return {
 		postgresEnabled: !!envOpt('POSTGRES_ADMIN_URL'),
+		limits: LIMITS,
 		mediaProfiles: profiles.map((p) => ({ id: p.id, name: p.name, bucket: p.bucket }))
 	};
 };
@@ -33,6 +39,12 @@ export const actions: Actions = {
 		const storageMode = String(form.get('storageMode') ?? 'local');
 		const storageProfileId = String(form.get('storageProfileId') ?? '') || null;
 		const image = String(form.get('image') ?? '').trim() || null;
+		const sourceRepo = String(form.get('sourceRepo') ?? '').trim() || null;
+		const sourceRef = String(form.get('sourceRef') ?? '').trim() || null;
+		const cpuMillicores =
+			parseCpuMillicores(String(form.get('cpuMillicores') ?? '')) ?? LIMITS.cpuMillicores.default;
+		const memoryMb =
+			parseMemoryMb(String(form.get('memoryMb') ?? '')) ?? LIMITS.memoryMb.default;
 
 		if (!isValidSiteName(name)) {
 			return fail(400, {
@@ -62,6 +74,18 @@ export const actions: Actions = {
 		if (image && !/^[a-z0-9][a-z0-9._/:@-]{0,199}$/i.test(image)) {
 			return fail(400, { error: 'Invalid image reference' });
 		}
+		if (sourceRepo && !isValidGitUrl(sourceRepo)) {
+			return fail(400, { error: 'Invalid repository URL (https:// or git@)' });
+		}
+		if (sourceRef && !isValidGitRef(sourceRef)) {
+			return fail(400, { error: 'Invalid ref (branch, tag, or SHA)' });
+		}
+		if (sourceRef && !sourceRepo) {
+			return fail(400, { error: 'A git ref requires a repository URL' });
+		}
+		if (sourceRepo && image) {
+			return fail(400, { error: 'Choose either a git source or an image override, not both' });
+		}
 
 		const [site] = await db
 			.insert(sites)
@@ -70,7 +94,11 @@ export const actions: Actions = {
 				dbEngine: dbEngine as 'sqlite' | 'postgres',
 				storageMode: storageMode as 'local' | 's3',
 				storageProfileId: storageMode === 's3' ? storageProfileId : null,
-				image
+				image,
+				sourceRepo,
+				sourceRef,
+				cpuMillicores,
+				memoryMb
 			})
 			.returning();
 		await db.insert(domains).values({ siteId: site.id, hostname, isPrimary: true });

@@ -41,35 +41,35 @@
 	<div class="flex items-center justify-between">
 		<div>
 			<h1 class="font-mono text-xl font-semibold">{data.job.type}</h1>
-			<p class="mt-0.5 text-sm text-slate-400">{data.job.id}</p>
+			<p class="mt-0.5 text-sm text-mute">{data.job.id}</p>
 		</div>
 		<StatusPill status={jobStatus} />
 	</div>
 
 	{#if data.job.error}
-		<div class="rounded-md border border-red-900 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+		<div class="rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
 			{data.job.error}
 		</div>
 	{/if}
 
 	<div
 		bind:this={logEl}
-		class="h-[60vh] overflow-y-auto rounded-lg border border-slate-800 bg-slate-950 p-4 font-mono text-xs leading-5"
+		class="h-[60vh] overflow-y-auto rounded-lg border border-line bg-ink p-4 font-mono text-xs leading-5"
 	>
 		{#each events as e (e.id)}
 			<div class="flex gap-3">
-				<span class="shrink-0 text-slate-600">{new Date(e.ts).toLocaleTimeString()}</span>
+				<span class="shrink-0 text-zinc-500">{new Date(e.ts).toLocaleTimeString()}</span>
 				<span
 					class="shrink-0 {e.level === 'error'
 						? 'text-red-400'
 						: e.level === 'warn'
 							? 'text-amber-400'
-							: 'text-slate-500'}">{e.level}</span
+							: 'text-mute'}">{e.level}</span
 				>
-				<span class="whitespace-pre-wrap break-all text-slate-300">{e.message}</span>
+				<span class="whitespace-pre-wrap break-all text-zinc-300">{e.message}</span>
 			</div>
 		{:else}
-			<p class="text-slate-600">Waiting for log output…</p>
+			<p class="text-zinc-500">Waiting for log output…</p>
 		{/each}
 	</div>
 </div>

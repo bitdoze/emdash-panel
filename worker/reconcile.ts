@@ -11,7 +11,13 @@ import {
 	listManagedContainers,
 	removeNetwork
 } from './docker.js';
-import { getConfig, removeRoutes, replaceSiteRoutes, siteRoute } from './caddy.js';
+import {
+	getConfig,
+	reconcileAccessLogs,
+	removeRoutes,
+	replaceSiteRoutes,
+	siteRoute
+} from './caddy.js';
 import bcrypt from 'bcryptjs';
 import { siteResourceNames } from './handlers/sites.js';
 
@@ -170,6 +176,20 @@ export async function reconcile(): Promise<ReconcileReport> {
 		}
 	} catch (err) {
 		report.warnings.push(`caddy reconcile failed: ${String(err)}`);
+	}
+
+	// 3b. Per-site access logs: hostname→site-* logger mappings track live
+	//     domains; stale mappings/loggers are removed.
+	try {
+		const desired = new Map<string, string>();
+		for (const site of liveSites) {
+			if (site.status === 'provisioning' || !site.containerName) continue;
+			const rows = await db.select().from(domains).where(eq(domains.siteId, site.id));
+			for (const d of rows) desired.set(d.hostname, site.id);
+		}
+		await reconcileAccessLogs(desired);
+	} catch (err) {
+		report.warnings.push(`access-log reconcile failed: ${String(err)}`);
 	}
 
 	// 4. Networks for deleted sites.

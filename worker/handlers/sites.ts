@@ -16,7 +16,8 @@ import {
 	siteDatabases,
 	sites,
 	storageProfiles,
-	backups
+	backups,
+	deployments
 } from '../../src/lib/server/db/schema.js';
 import {
 	decryptSecret,
@@ -42,8 +43,9 @@ import {
 	waitHealthy
 } from '../docker.js';
 import { removeRoutes, replaceSiteRoutes, siteRoute } from '../caddy.js';
+import { removeSiteAccessLog, syncSiteAccessLog } from '../caddy.js';
 import { dropSiteDatabase, provisionSiteDatabase } from '../postgres.js';
-import { buildSiteImage } from '../build.js';
+import { buildGitImage, buildSiteImage } from '../build.js';
 
 export class RetryableError extends Error {}
 
@@ -285,8 +287,8 @@ export async function handleSiteCreate(jobId: string, payload: { siteId: string 
 			Mounts: [{ Type: 'volume', Source: names.volume, Target: '/app/data' }],
 			NetworkMode: names.network,
 			RestartPolicy: { Name: 'unless-stopped' },
-			Memory: 512 * 1024 * 1024,
-			NanoCpus: 1_000_000_000,
+			Memory: site.memoryMb * 1024 * 1024,
+			NanoCpus: site.cpuMillicores * 1_000_000,
 			PidsLimit: 256,
 			LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } },
 			SecurityOpt: ['no-new-privileges'],
@@ -358,6 +360,8 @@ export async function handleSiteCreate(jobId: string, payload: { siteId: string 
 			.where(eq(domains.hostname, hostname));
 		await logJob(jobId, `Route configured for ${hostname}`);
 	}
+	// Per-site access log file on the shared caddy-logs volume.
+	await syncSiteAccessLog(site.id, hostnames);
 
 	// 7. External verification — ACME issuance happens on first request.
 	await setJobProgress(jobId, 'verifying external HTTPS');
@@ -370,6 +374,17 @@ export async function handleSiteCreate(jobId: string, payload: { siteId: string 
 		.update(sites)
 		.set({ status: 'awaiting_setup', error: null, updatedAt: new Date() })
 		.where(eq(sites.id, site.id));
+	// Record the initial image as the site's first deployment.
+	await db.insert(deployments).values({
+		siteId: site.id,
+		jobId,
+		state: 'successful',
+		image,
+		gitUrl: site.sourceRepo,
+		gitRef: site.sourceRef,
+		isCurrent: true,
+		finishedAt: new Date()
+	});
 	await logJob(jobId, `Site is live at https://${primary} — CMS setup is gated until claimed`);
 }
 
@@ -380,6 +395,9 @@ export async function handleSiteDelete(jobId: string, payload: { siteId: string;
 	await db.update(sites).set({ status: 'deleting', updatedAt: new Date() }).where(eq(sites.id, site.id));
 
 	await removeRoutes([`site-${site.id}`, `site-${site.id}-gate`]);
+	await removeSiteAccessLog(site.id).catch((err) =>
+		logJob(jobId, `Access-log cleanup failed (non-fatal): ${String(err)}`, 'warn')
+	);
 	await disconnectCaddy(names.network);
 	await removeManagedContainer(names.container);
 	await removeNetwork(names.network);
@@ -616,4 +634,134 @@ async function runSiteBackup(jobId: string, payload: { siteId: string; backupId:
 		})
 		.where(eq(backups.id, backupId));
 	await logJob(jobId, `Backup written to ${encPath} (${size} bytes)`);
+}
+
+/**
+ * Live-update a site container's CPU/memory limits. `docker update` applies
+ * cgroup limits without a restart — no downtime.
+ */
+export async function handleSiteUpdateLimits(
+	jobId: string,
+	payload: { siteId: string; cpuMillicores: number; memoryMb: number }
+) {
+	const site = await siteRow(payload.siteId);
+	const names = siteResourceNames(site.id);
+	const cpu = Math.min(Math.max(Math.trunc(payload.cpuMillicores), 100), 8_000);
+	const mem = Math.min(Math.max(Math.trunc(payload.memoryMb), 128), 16_384);
+
+	if (!(await containerExists(names.container))) {
+		throw new Error('Container does not exist — provision the site first');
+	}
+	await docker.getContainer(names.container).update({
+		NanoCpus: cpu * 1_000_000,
+		Memory: mem * 1024 * 1024,
+		// MemorySwap must be >= Memory or -1 (unlimited swap within the cap).
+		MemorySwap: -1
+	});
+	await db
+		.update(sites)
+		.set({ cpuMillicores: cpu, memoryMb: mem, updatedAt: new Date() })
+		.where(eq(sites.id, site.id));
+	await logJob(jobId, `Limits updated: ${cpu / 1000} CPU, ${mem} MiB memory`);
+}
+
+/**
+ * Build and deploy a new image for a site — from its git source, or the bundled
+ * template when no source is set. The container is recreated with the same
+ * env, volume, network and limits; on failure the previous image is restored.
+ */
+export async function handleSiteDeploy(jobId: string, payload: { siteId: string; deploymentId: string }) {
+	const site = await siteRow(payload.siteId);
+	const names = siteResourceNames(site.id);
+	const [dep] = await db
+		.select()
+		.from(deployments)
+		.where(eq(deployments.id, payload.deploymentId))
+		.limit(1);
+	if (!dep || dep.siteId !== site.id) throw new Error('Deployment not found');
+	const oldImage = site.image ?? defaultSiteImage(site);
+	const fail = async (message: string) => {
+		await db
+			.update(deployments)
+			.set({ state: 'failed', error: message.slice(0, 2000), finishedAt: new Date() })
+			.where(eq(deployments.id, dep.id));
+		throw new Error(message);
+	};
+
+	// 1. Build (or pull) the candidate image.
+	const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+	const tag = `ems-deploy-${names.container.slice(9)}:${stamp}`;
+	try {
+		await db.update(deployments).set({ state: 'building' }).where(eq(deployments.id, dep.id));
+		if (dep.gitUrl) {
+			await logJob(jobId, `Building ${dep.gitUrl}${dep.gitRef ? `#${dep.gitRef}` : ''}`);
+			await buildGitImage(tag, dep.gitUrl, dep.gitRef ?? undefined, {}, (line) =>
+				logJob(jobId, line)
+			);
+		} else {
+			await logJob(jobId, `Rebuilding bundled template (${site.dbEngine})`);
+			await buildSiteImage(tag, { EMDASH_DB: site.dbEngine }, (line) => logJob(jobId, line));
+		}
+	} catch (err) {
+		await fail(`Image build failed: ${err instanceof Error ? err.message : String(err)}`);
+		return;
+	}
+
+	// 2. Capture the running container's config, then swap in the new image.
+	await db.update(deployments).set({ state: 'switching' }).where(eq(deployments.id, dep.id));
+	const oldInfo = await docker.getContainer(names.container).inspect();
+	const shared = {
+		Env: oldInfo.Config.Env,
+		Labels: oldInfo.Config.Labels,
+		User: oldInfo.Config.User,
+		ExposedPorts: oldInfo.Config.ExposedPorts,
+		HostConfig: oldInfo.HostConfig
+	};
+	await removeManagedContainer(names.container);
+	try {
+		const container = await docker.createContainer({
+			name: names.container,
+			Image: tag,
+			...shared
+		});
+		await container.start();
+		if (!(await waitHealthy(names.container, config.readyTimeoutMs))) {
+			throw new Error('New container did not become healthy');
+		}
+	} catch (err) {
+		// Roll back to the previous image.
+		await removeManagedContainer(names.container);
+		try {
+			const back = await docker.createContainer({ name: names.container, Image: oldImage, ...shared });
+			await back.start();
+			await waitHealthy(names.container, config.readyTimeoutMs);
+			await logJob(jobId, `Rollback: restored ${oldImage}`, 'warn');
+		} catch (rollbackErr) {
+			await fail(
+				`Deploy failed and rollback also failed: ${String(rollbackErr)}`
+			);
+			return;
+		}
+		await fail(`Deploy failed, rolled back to ${oldImage}: ${err instanceof Error ? err.message : String(err)}`);
+		return;
+	}
+
+	// 3. Mark the deployment current.
+	await db.update(deployments).set({ isCurrent: false }).where(eq(deployments.siteId, site.id));
+	const img = await docker.getImage(tag).inspect().catch(() => undefined);
+	await db
+		.update(deployments)
+		.set({
+			state: 'successful',
+			image: tag,
+			imageDigest: img?.Id ?? null,
+			isCurrent: true,
+			finishedAt: new Date()
+		})
+		.where(eq(deployments.id, dep.id));
+	await db
+		.update(sites)
+		.set({ image: tag, updatedAt: new Date() })
+		.where(eq(sites.id, site.id));
+	await logJob(jobId, `Deployment live on ${tag}`);
 }

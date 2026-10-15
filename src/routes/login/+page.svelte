@@ -16,17 +16,30 @@
 	}
 </script>
 
-<div class="flex min-h-screen items-center justify-center bg-slate-950 px-4">
-	<div class="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 shadow-xl">
-		<h1 class="text-2xl font-semibold text-slate-50">Sign in</h1>
+<div class="flex min-h-screen items-center justify-center bg-ink px-4">
+	<div
+		class="w-full max-w-md rounded-xl border border-line bg-panel p-8 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_24px_60px_-24px_rgba(0,0,0,0.8)]"
+	>
+		<div class="flex items-center gap-3">
+			<div
+				class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-indigo-600 font-bold text-white shadow-lg shadow-accent/25"
+			>
+				E
+			</div>
+			<div>
+				<div class="font-semibold tracking-tight text-zinc-50">EmDash Panel</div>
+				<div class="text-xs text-mute">Site operations</div>
+			</div>
+		</div>
+		<h1 class="mt-6 text-xl font-semibold text-zinc-50">Sign in</h1>
 
 		{#if form?.error}
-			<div class="mt-4 rounded-md border border-red-900 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+			<div class="mt-4 rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
 				{form.error}
 			</div>
 		{/if}
 		{#if passkeyError}
-			<div class="mt-4 rounded-md border border-red-900 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+			<div class="mt-4 rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
 				{passkeyError}
 			</div>
 		{/if}
@@ -43,39 +56,39 @@
 			}}
 		>
 			<label class="block">
-				<span class="text-sm text-slate-300">Email</span>
+				<span class="text-sm text-zinc-300">Email</span>
 				<input
 					name="email"
 					type="email"
 					required
 					autocomplete="email webauthn"
-					class="mt-1 w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+					class="mt-1 w-full rounded-md border border-line bg-panel-2 px-3 py-2 text-sm text-zinc-100 focus:border-accent focus:outline-none"
 				/>
 			</label>
 			<label class="block">
-				<span class="text-sm text-slate-300">Password</span>
+				<span class="text-sm text-zinc-300">Password</span>
 				<input
 					name="password"
 					type="password"
 					required
 					autocomplete="current-password"
-					class="mt-1 w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+					class="mt-1 w-full rounded-md border border-line bg-panel-2 px-3 py-2 text-sm text-zinc-100 focus:border-accent focus:outline-none"
 				/>
 			</label>
 			<button
 				type="submit"
 				disabled={submitting}
-				class="w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+				class="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-50"
 			>
 				{submitting ? 'Signing in…' : 'Sign in'}
 			</button>
 		</form>
 
-		<div class="mt-4 border-t border-slate-800 pt-4">
+		<div class="mt-4 border-t border-line pt-4">
 			<button
 				type="button"
 				onclick={signInWithPasskey}
-				class="w-full rounded-md border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+				class="w-full rounded-md border border-line px-4 py-2 text-sm text-zinc-300 hover:bg-panel-2"
 			>
 				Sign in with a passkey
 			</button>

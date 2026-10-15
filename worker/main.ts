@@ -13,8 +13,10 @@ import {
 	handleSiteCompleteSetup,
 	handleSiteCreate,
 	handleSiteDelete,
+	handleSiteDeploy,
 	handleSiteStart,
 	handleSiteStop,
+	handleSiteUpdateLimits,
 	RetryableError
 } from './handlers/sites.js';
 import { docker } from './docker.js';
@@ -27,7 +29,9 @@ const HANDLERS: Record<string, Handler> = {
 	'site.start': handleSiteStart as Handler,
 	'site.stop': handleSiteStop as Handler,
 	'site.complete_setup': handleSiteCompleteSetup as Handler,
-	'site.backup': handleSiteBackup as Handler
+	'site.backup': handleSiteBackup as Handler,
+	'site.update_limits': handleSiteUpdateLimits as Handler,
+	'site.deploy': handleSiteDeploy as Handler
 };
 
 let running = true;

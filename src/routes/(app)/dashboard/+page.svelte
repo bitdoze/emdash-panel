@@ -3,6 +3,10 @@
 	import { invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import StatusPill from '#lib/components/StatusPill.svelte';
+	import Card from '#lib/components/Card.svelte';
+	import MetricCard from '#lib/components/MetricCard.svelte';
+	import UsageBar from '#lib/components/UsageBar.svelte';
+	import Sparkline from '#lib/components/Sparkline.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -22,139 +26,197 @@
 		return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 	}
 
-	const host = $derived((data.metrics as { host?: Record<string, number> } | null)?.host);
-	const containers = $derived(
-		((data.metrics as { containers?: { name?: string; cpuPct?: number; memBytes?: number }[] } | null)
-			?.containers ?? [])
+	const host = $derived(data.metrics?.host);
+	const containers = $derived(data.metrics?.containers ?? []);
+
+	const cpuHist = $derived(data.history.map((h) => h.host?.cpuPct));
+	const memHist = $derived(
+		data.history.map((h) =>
+			h.host?.memTotal ? ((h.host.memTotal - (h.host.memAvailable ?? 0)) / h.host.memTotal) * 100 : null
+		)
 	);
+	const diskHist = $derived(
+		data.history.map((h) => (h.host?.diskTotal ? 100 - ((h.host.diskFree ?? 0) / h.host.diskTotal) * 100 : null))
+	);
+	const netHist = $derived(
+		data.history.map((h) => (h.containers ?? []).reduce((a, c) => a + (c.rxBytes ?? 0) + (c.txBytes ?? 0), 0))
+	);
+
+	const siteUsage = $derived(
+		data.sites
+			.filter((s) => s.status !== 'deleted')
+			.map((s) => {
+				const c = containers.find((x) => x.name === s.containerName);
+				return { site: s, c };
+			})
+	);
+
+	let age = $derived(data.metricsAt ? Math.max(0, Math.round((Date.now() - data.metricsAt) / 1000)) : null);
 </script>
 
 <div class="space-y-6">
-	<h1 class="text-xl font-semibold">Dashboard</h1>
-
-	<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-		<div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-			<div class="text-xs text-slate-400">Host CPU</div>
-			<div class="mt-1 text-2xl font-semibold">
-				{host?.cpuPct !== undefined ? `${host.cpuPct}%` : '—'}
-			</div>
+	<div class="flex items-end justify-between">
+		<div>
+			<h1 class="text-xl font-semibold tracking-tight">Dashboard</h1>
+			<p class="mt-0.5 text-sm text-mute">
+				Host + managed container overview{#if age !== null}
+					· metrics {age}s ago{/if}
+			</p>
 		</div>
-		<div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-			<div class="text-xs text-slate-400">Memory</div>
-			<div class="mt-1 text-2xl font-semibold">
-				{host?.memTotal
-					? `${Math.round(((host.memTotal - (host.memAvailable ?? 0)) / host.memTotal) * 100)}%`
-					: '—'}
-			</div>
-			<div class="text-xs text-slate-500">
-				{fmtBytes(host?.memTotal ? host.memTotal - (host.memAvailable ?? 0) : undefined)} / {fmtBytes(
-					host?.memTotal
-				)}
-			</div>
-		</div>
-		<div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-			<div class="text-xs text-slate-400">Load average</div>
-			<div class="mt-1 text-2xl font-semibold">
-				{host?.load1 !== undefined ? `${host.load1} / ${host.load5} / ${host.load15}` : '—'}
-			</div>
-		</div>
-		<div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
-			<div class="text-xs text-slate-400">Disk free</div>
-			<div class="mt-1 text-2xl font-semibold">{fmtBytes(host?.diskFree)}</div>
-		</div>
+		<a
+			href="/sites/new"
+			class="rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white shadow-lg shadow-accent/20 transition hover:brightness-110"
+			>New site</a
+		>
 	</div>
 
-	<section>
-		<div class="mb-3 flex items-center justify-between">
-			<h2 class="text-lg font-medium">Sites</h2>
-			<a
-				href="/sites/new"
-				class="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
-				>New site</a
-			>
+	<!-- Host vitals -->
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+		<MetricCard
+			label="Host CPU"
+			value={host?.cpuPct !== undefined ? `${host.cpuPct.toFixed(0)}%` : '—'}
+			sub="all cores"
+			history={cpuHist}
+			suffix="%"
+		/>
+		<MetricCard
+			label="Memory"
+			value={host?.memTotal
+				? `${Math.round(((host.memTotal - (host.memAvailable ?? 0)) / host.memTotal) * 100)}%`
+				: '—'}
+			sub="{fmtBytes(host?.memTotal ? host.memTotal - (host.memAvailable ?? 0) : undefined)} of {fmtBytes(host?.memTotal)}"
+			history={memHist}
+			suffix="%"
+			accent="#a78bfa"
+		/>
+		<MetricCard
+			label="Load"
+			value={host?.load1 !== undefined ? `${host.load1.toFixed(2)}` : '—'}
+			sub="1m · {host?.load5?.toFixed(2)} · {host?.load15?.toFixed(2)}"
+			history={data.history.map((h) => h.host?.load1)}
+			accent="#34d399"
+		/>
+		<MetricCard
+			label="Disk"
+			value={fmtBytes(host?.diskFree)}
+			sub="free of {fmtBytes(host?.diskTotal)}"
+			history={diskHist}
+			suffix="%"
+			accent="#fbbf24"
+		/>
+	</div>
+
+	<!-- Network throughput -->
+	<Card title="Network" subtitle="Combined site container traffic (cumulative rx+tx)">
+		<div class="flex items-end justify-between">
+			<div class="text-sm text-zinc-300">
+				{fmtBytes(netHist[netHist.length - 1] ?? 0)}
+				<span class="text-mute">transferred</span>
+			</div>
 		</div>
-		{#if data.sites.length === 0}
-			<p class="rounded-lg border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">
-				No sites yet. Create your first EmDash site.
-			</p>
+		{#if netHist.length > 1}
+			<div class="mt-2">
+				<Sparkline values={netHist} stroke="#4f8ff7" height={56} />
+			</div>
 		{:else}
-			<div class="overflow-hidden rounded-lg border border-slate-800">
+			<p class="py-3 text-sm text-mute">Collecting samples…</p>
+		{/if}
+	</Card>
+
+	<!-- Site usage table -->
+	<Card title="Sites" subtitle="Live container usage per site">
+		{#if siteUsage.length === 0}
+			<p class="py-4 text-center text-sm text-mute">No sites yet. Create your first EmDash site.</p>
+		{:else}
+			<div class="-mx-5 -my-4 overflow-x-auto">
 				<table class="w-full text-sm">
-					<thead class="bg-slate-900 text-left text-xs text-slate-400">
+					<thead class="border-b border-line text-left text-xs text-mute">
 						<tr>
-							<th class="px-4 py-2">Name</th>
-							<th class="px-4 py-2">Status</th>
-							<th class="px-4 py-2">Database</th>
-							<th class="px-4 py-2">Created</th>
+							<th class="px-5 py-2.5 font-medium">Site</th>
+							<th class="px-4 py-2.5 font-medium">Status</th>
+							<th class="px-4 py-2.5 font-medium">Engine</th>
+							<th class="w-40 px-4 py-2.5 font-medium">CPU</th>
+							<th class="w-48 px-4 py-2.5 font-medium">Memory</th>
+							<th class="px-4 py-2.5 text-right font-medium">Net I/O</th>
 						</tr>
 					</thead>
-					<tbody class="divide-y divide-slate-800">
-						{#each data.sites as site (site.id)}
-							<tr class="hover:bg-slate-900/60">
-								<td class="px-4 py-2.5">
-									<a href="/sites/{site.id}" class="font-medium text-sky-400 hover:underline"
+					<tbody class="divide-y divide-line/60">
+						{#each siteUsage as { site, c } (site.id)}
+							<tr class="hover:bg-panel-2/50">
+								<td class="px-5 py-3">
+									<a href="/sites/{site.id}" class="font-medium text-zinc-100 hover:text-accent"
 										>{site.name}</a
 									>
 								</td>
-								<td class="px-4 py-2.5"><StatusPill status={site.status} /></td>
-								<td class="px-4 py-2.5 text-slate-400">{site.dbEngine}</td>
-								<td class="px-4 py-2.5 text-slate-500"
-									>{new Date(site.createdAt).toLocaleString()}</td
-								>
+								<td class="px-4 py-3"><StatusPill status={site.status} /></td>
+								<td class="px-4 py-3 text-mute">{site.dbEngine}</td>
+								<td class="px-4 py-3">
+									<UsageBar
+										value={c?.cpuPct ?? 0}
+										max={site.cpuMillicores / 10}
+										label="{c ? c.cpuPct?.toFixed(0) : '—'}%"
+										detail="{site.cpuMillicores / 1000} vCPU"
+									/>
+								</td>
+								<td class="px-4 py-3">
+									<UsageBar
+										value={c?.memBytes ?? 0}
+										max={site.memoryMb * 1024 * 1024}
+										label={c ? fmtBytes(c.memBytes) : '—'}
+										detail="{site.memoryMb} MiB"
+									/>
+								</td>
+								<td class="px-4 py-3 text-right text-xs text-mute">
+									{#if c}↓ {fmtBytes(c.rxBytes)} · ↑ {fmtBytes(c.txBytes)}{:else}—{/if}
+								</td>
 							</tr>
 						{/each}
 					</tbody>
 				</table>
 			</div>
 		{/if}
-	</section>
+	</Card>
 
 	<div class="grid gap-6 lg:grid-cols-2">
-		<section>
-			<h2 class="mb-3 text-lg font-medium">Recent jobs</h2>
+		<Card title="Recent jobs">
 			{#if data.jobs.length === 0}
-				<p class="rounded-lg border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">
-					No jobs yet.
-				</p>
+				<p class="py-4 text-center text-sm text-mute">No jobs yet.</p>
 			{:else}
-				<div class="space-y-2">
+				<div class="-mx-5 -my-4 divide-y divide-line/60">
 					{#each data.jobs as job (job.id)}
 						<a
 							href="/jobs/{job.id}"
-							class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm hover:border-slate-700"
+							class="flex items-center justify-between px-5 py-2.5 text-sm hover:bg-panel-2/50"
 						>
-							<span class="font-mono text-slate-300">{job.type}</span>
+							<span class="font-mono text-xs text-zinc-300">{job.type}</span>
 							<span class="flex items-center gap-3">
-								{#if job.progress}<span class="text-xs text-slate-500">{job.progress}</span>{/if}
+								{#if job.progress}<span class="text-xs text-mute">{job.progress}</span>{/if}
 								<StatusPill status={job.status} />
 							</span>
 						</a>
 					{/each}
 				</div>
 			{/if}
-		</section>
+		</Card>
 
-		<section>
-			<h2 class="mb-3 text-lg font-medium">Containers</h2>
+		<Card title="All containers" subtitle="Every managed container on the host">
 			{#if containers.length === 0}
-				<p class="rounded-lg border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">
-					No managed containers yet.
-				</p>
+				<p class="py-4 text-center text-sm text-mute">No containers reporting.</p>
 			{:else}
-				<div class="overflow-hidden rounded-lg border border-slate-800">
+				<div class="-mx-5 -my-4 overflow-x-auto">
 					<table class="w-full text-sm">
-						<thead class="bg-slate-900 text-left text-xs text-slate-400">
+						<thead class="border-b border-line text-left text-xs text-mute">
 							<tr>
-								<th class="px-4 py-2">Container</th>
-								<th class="px-4 py-2">CPU</th>
-								<th class="px-4 py-2">Memory</th>
+								<th class="px-5 py-2.5 font-medium">Container</th>
+								<th class="px-4 py-2.5 font-medium">CPU</th>
+								<th class="px-4 py-2.5 font-medium">Memory</th>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-slate-800">
+						<tbody class="divide-y divide-line/60">
 							{#each containers as c (c.name)}
-								<tr>
-									<td class="px-4 py-2.5 font-mono text-xs">{c.name}</td>
-									<td class="px-4 py-2.5">{c.cpuPct}%</td>
+								<tr class="hover:bg-panel-2/50">
+									<td class="px-5 py-2.5 font-mono text-xs">{c.name}</td>
+									<td class="px-4 py-2.5">{c.cpuPct?.toFixed(1) ?? '—'}%</td>
 									<td class="px-4 py-2.5">{fmtBytes(c.memBytes)}</td>
 								</tr>
 							{/each}
@@ -162,6 +224,6 @@
 					</table>
 				</div>
 			{/if}
-		</section>
+		</Card>
 	</div>
 </div>

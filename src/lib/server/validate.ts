@@ -43,3 +43,38 @@ export function validateSiteDomain(hostname: string): string | null {
 	if (hostname === panelHostname()) return 'This hostname belongs to the panel itself';
 	return null;
 }
+
+/* ---- Resource limits + git source validation ---- */
+
+export const LIMITS = {
+	cpuMillicores: { min: 100, max: 8_000, default: 1_000 },
+	memoryMb: { min: 128, max: 16_384, default: 512 }
+} as const;
+
+export function parseCpuMillicores(raw: string): number | null {
+	const n = Number(raw);
+	if (!Number.isFinite(n)) return null;
+	const v = Math.trunc(n);
+	return v >= LIMITS.cpuMillicores.min && v <= LIMITS.cpuMillicores.max ? v : null;
+}
+
+export function parseMemoryMb(raw: string): number | null {
+	const n = Number(raw);
+	if (!Number.isFinite(n)) return null;
+	const v = Math.trunc(n);
+	return v >= LIMITS.memoryMb.min && v <= LIMITS.memoryMb.max ? v : null;
+}
+
+/** Git source URL — https/ssh/git URLs only; no local paths or file://. */
+const GIT_URL_RE =
+	/^(https:\/\/[\w.-]+(?::\d+)?\/[\w.~/-]+|git@[\w.-]+:[\w.~/-]+|git:\/\/[\w.-]+(?::\d+)?\/[\w.~/-]+)$/;
+
+export function isValidGitUrl(url: string): boolean {
+	return url.length <= 500 && GIT_URL_RE.test(url);
+}
+
+const GIT_REF_RE = /^[\w][\w./-]{0,99}$/;
+
+export function isValidGitRef(ref: string): boolean {
+	return GIT_REF_RE.test(ref) && !ref.includes('..');
+}

@@ -24,6 +24,17 @@ MIT licensed. Status: early release, functional end-to-end.
   for PostgreSQL) written as AES-256-GCM encrypted archives with a manifest.
 - **Jobs** — all mutations run as durable jobs on a lease-based queue with
   retries, live log streaming (SSE), and per-site serialization.
+- **Resource limits** — per-site CPU (millicores) and memory caps, applied at
+  container creation and adjustable live without restart.
+- **Observability** — host CPU/memory/load/disk and per-container CPU, memory
+  and network I/O are sampled every 15s and rendered as graphs on the
+  dashboard and each site's detail page.
+- **Traffic logs** — Caddy writes per-site JSON access logs; each site's page
+  shows request counts, bandwidth, error rates, top paths and recent hits.
+- **File manager** — browse, edit, upload, download and delete files in a
+  site's data volume directly from the panel.
+- **Deployments** — rebuild a site from the bundled template or from a git
+  repository (`repo.git#ref`) with automatic rollback on failed health checks.
 - **Auth** — single-owner Better Auth login with passkey support. Owner creation
   is gated by a one-time CLI-issued setup token; there is no public signup.
 - **Ops** — reconciliation loop repairs drifted routes/networks/containers,
@@ -119,6 +130,12 @@ npm run build
 - The setup-gate password is shown in the UI only while the site awaits owner
   setup; afterwards it is discarded.
 - Caddy's admin API is bound to a unix socket shared only with the worker.
+- Site containers run as `node` (uid 1000) with a read-only root filesystem,
+  `no-new-privileges`, a PID cap, and bounded JSON logs. The panel mounts the
+  Docker volumes dir for the file manager and chowns writes back to uid 1000.
+
+See [docs/operations.md](docs/operations.md) for restore procedures, access-log
+details, and operational notes.
 
 ## License
 

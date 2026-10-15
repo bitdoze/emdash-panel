@@ -17,8 +17,19 @@ interface CaddyRoute {
 interface CaddyConfig {
 	apps?: {
 		http?: {
-			servers?: Record<string, { routes?: CaddyRoute[]; [k: string]: unknown }>;
+			servers?: Record<
+				string,
+				{
+					routes?: CaddyRoute[];
+					logs?: { logger_names?: Record<string, string>; [k: string]: unknown };
+					[k: string]: unknown;
+				}
+			>;
 		};
+	};
+	logging?: {
+		logs?: Record<string, unknown>;
+		[key: string]: unknown;
 	};
 	[key: string]: unknown;
 }
@@ -225,4 +236,141 @@ export async function listRouteIds(): Promise<string[]> {
 	return routesOf(cfg)
 		.map((r) => r['@id'])
 		.filter((v): v is string => typeof v === 'string');
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-site access logs                                                 */
+/*                                                                     */
+/* Each site's hostnames map to a named Caddy logger ("site-<id>") that  */
+/* writes JSON access entries to /logs/<siteId>.jsonl on the shared      */
+/* caddy-logs volume, which the panel mounts read-only for the traffic   */
+/* viewer.                                                             */
+/* ------------------------------------------------------------------ */
+
+export const siteLoggerName = (siteId: string) => `site-${siteId}`;
+export const siteLogFile = (siteId: string) => `/logs/${siteId}.jsonl`;
+
+/**
+ * Ensure a site's hostnames log to its own file. Only touches this
+ * installation's `site-*` loggers — unrelated logging config is preserved.
+ */
+export async function syncSiteAccessLog(siteId: string, hostnames: string[]): Promise<void> {
+	if (hostnames.length === 0) return;
+	const loggerName = siteLoggerName(siteId);
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const { config: cfg, etag } = await getConfig();
+		cfg.logging ??= {};
+		cfg.logging.logs ??= {};
+		const server = cfg.apps?.http?.servers?.[config.caddyServer];
+		if (!server) throw new Error(`Caddy config has no HTTP server named ${config.caddyServer}`);
+		server.logs ??= {};
+		server.logs.logger_names ??= {};
+
+		const current = cfg.logging.logs[loggerName];
+		// Without `include`, a named logger captures ALL runtime output —
+		// restrict it to this site's access entries (emitted under
+		// http.log.access.<loggerName>).
+		const want = {
+			writer: { output: 'file', filename: siteLogFile(siteId) },
+			encoder: { format: 'json' },
+			level: 'INFO',
+			include: [`http.log.access.${loggerName}`]
+		};
+		const logMissing = JSON.stringify(current) !== JSON.stringify(want);
+		const namesMissing = hostnames.some((h) => server.logs!.logger_names![h] !== loggerName);
+		if (!logMissing && !namesMissing) return;
+
+		if (logMissing) cfg.logging.logs[loggerName] = want;
+		for (const h of hostnames) server.logs.logger_names[h] = loggerName;
+		try {
+			return await loadConfig(cfg, etag);
+		} catch (err) {
+			if (err instanceof CaddyError && err.status === 409 && attempt < 2) continue;
+			throw err;
+		}
+	}
+}
+
+/** Drop a site's logger and hostname mappings (on delete). */
+export async function removeSiteAccessLog(siteId: string): Promise<void> {
+	const loggerName = siteLoggerName(siteId);
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const { config: cfg, etag } = await getConfig();
+		const server = cfg.apps?.http?.servers?.[config.caddyServer];
+		const names = server?.logs?.logger_names ?? {};
+		const mapped = Object.values(names).includes(loggerName);
+		const hasLog = cfg.logging?.logs?.[loggerName] !== undefined;
+		if (!mapped && !hasLog) return;
+
+		for (const [host, name] of Object.entries(names)) {
+			if (name === loggerName) delete names[host];
+		}
+		if (hasLog) delete cfg.logging!.logs![loggerName];
+		try {
+			return await loadConfig(cfg, etag);
+		} catch (err) {
+			if (err instanceof CaddyError && err.status === 409 && attempt < 2) continue;
+			throw err;
+		}
+	}
+}
+
+/**
+ * Reconcile per-site loggers: live sites get their log files; stale site-*
+ * loggers and hostname mappings for deleted sites are removed.
+ * `desired` maps hostname → siteId for every live site.
+ */
+export async function reconcileAccessLogs(desired: Map<string, string>): Promise<void> {
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const { config: cfg, etag } = await getConfig();
+		const server = cfg.apps?.http?.servers?.[config.caddyServer];
+		if (!server) return;
+		server.logs ??= {};
+		server.logs.logger_names ??= {};
+		cfg.logging ??= {};
+		cfg.logging.logs ??= {};
+		const names = server.logs.logger_names;
+		const logs = cfg.logging.logs;
+		let dirty = false;
+
+		for (const [host, siteId] of desired) {
+			const loggerName = siteLoggerName(siteId);
+			if (names[host] !== loggerName) {
+				names[host] = loggerName;
+				dirty = true;
+			}
+			const wantLogger = {
+				writer: { output: 'file', filename: siteLogFile(siteId) },
+				encoder: { format: 'json' },
+				level: 'INFO',
+				include: [`http.log.access.${loggerName}`]
+			};
+			if (JSON.stringify(logs[loggerName]) !== JSON.stringify(wantLogger)) {
+				logs[loggerName] = wantLogger;
+				dirty = true;
+			}
+		}
+		// Remove site-* mappings for hosts no longer desired.
+		for (const [host, name] of Object.entries(names)) {
+			if (name.startsWith('site-') && !desired.has(host)) {
+				delete names[host];
+				dirty = true;
+			}
+		}
+		// Remove site-* loggers no site uses.
+		const usedLoggers = new Set(Object.values(names));
+		for (const name of Object.keys(logs)) {
+			if (name.startsWith('site-') && !usedLoggers.has(name)) {
+				delete logs[name];
+				dirty = true;
+			}
+		}
+		if (!dirty) return;
+		try {
+			return await loadConfig(cfg, etag);
+		} catch (err) {
+			if (err instanceof CaddyError && err.status === 409 && attempt < 2) continue;
+			throw err;
+		}
+	}
 }

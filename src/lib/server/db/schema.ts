@@ -46,6 +46,13 @@ export const sites = sqliteTable('sites', {
 		.default('local'),
 	storageProfileId: text('storage_profile_id'),
 	image: text('image'),
+	// Optional git source for deployments (repo URL + ref built via Docker's
+	// remote-context build, e.g. https://github.com/org/site.git#main).
+	sourceRepo: text('source_repo'),
+	sourceRef: text('source_ref'),
+	// Container resource limits: millicores (1000 = 1 CPU) and MiB.
+	cpuMillicores: integer('cpu_millicores').notNull().default(1000),
+	memoryMb: integer('memory_mb').notNull().default(512),
 	containerName: text('container_name'),
 	networkName: text('network_name'),
 	volumeName: text('volume_name'),
@@ -111,6 +118,8 @@ export const deployments = sqliteTable(
 		state: text('state', { enum: DEPLOYMENT_STATES }).notNull().default('queued'),
 		image: text('image'),
 		imageDigest: text('image_digest'),
+		gitUrl: text('git_url'),
+		gitRef: text('git_ref'),
 		commitSha: text('commit_sha'),
 		isCurrent: integer('is_current', { mode: 'boolean' }).notNull().default(false),
 		error: text('error'),
