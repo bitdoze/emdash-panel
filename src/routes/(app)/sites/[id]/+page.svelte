@@ -7,6 +7,8 @@
 	import Card from '#lib/components/Card.svelte';
 	import Sparkline from '#lib/components/Sparkline.svelte';
 	import UsageBar from '#lib/components/UsageBar.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -53,28 +55,19 @@
 			</p>
 		</div>
 		<div class="flex items-center gap-2">
-			<a
-				href="/sites/{data.site.id}/files"
-				class="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-zinc-200 hover:border-zinc-600"
-				>Files</a
-			>
+			<Button variant="outline" href="/sites/{data.site.id}/files">Files</Button>
 			<form method="POST" action="?/start" use:enhance class="inline">
-				<button
-					class="rounded-lg border border-line bg-panel px-3 py-2 text-sm hover:border-zinc-600 disabled:opacity-40"
-					disabled={data.site.status !== 'stopped'}>Start</button
-				>
+				<Button variant="outline" type="submit" disabled={data.site.status !== 'stopped'}>Start</Button>
 			</form>
 			<form method="POST" action="?/stop" use:enhance class="inline">
-				<button
-					class="rounded-lg border border-line bg-panel px-3 py-2 text-sm hover:border-zinc-600 disabled:opacity-40"
-					disabled={!running}>Stop</button
-				>
+				<Button variant="outline" type="submit" disabled={!running}>Stop</Button>
 			</form>
 			<form method="POST" action="?/backup" use:enhance class="inline">
-				<button
-					class="rounded-lg border border-line bg-panel px-3 py-2 text-sm hover:border-zinc-600 disabled:opacity-40"
+				<Button
+					variant="outline"
+					type="submit"
 					disabled={!['ready', 'awaiting_setup', 'stopped'].includes(data.site.status)}
-					>Backup</button
+					>Backup</Button
 				>
 			</form>
 		</div>
@@ -192,33 +185,29 @@
 				<form method="POST" action="?/updateLimits" use:enhance class="space-y-3">
 					<label class="block text-xs text-mute">
 						CPU (millicores · {data.limits.cpuMillicores.min}–{data.limits.cpuMillicores.max})
-						<input
+						<Input
 							name="cpuMillicores"
 							type="number"
 							min={data.limits.cpuMillicores.min}
 							max={data.limits.cpuMillicores.max}
 							step="50"
 							value={data.site.cpuMillicores}
-							class="mt-1 w-full rounded-md border border-line bg-panel-2 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-accent focus:outline-none"
+							class="mt-1 border-line bg-panel-2"
 						/>
 					</label>
 					<label class="block text-xs text-mute">
 						Memory (MiB · {data.limits.memoryMb.min}–{data.limits.memoryMb.max})
-						<input
+						<Input
 							name="memoryMb"
 							type="number"
 							min={data.limits.memoryMb.min}
 							max={data.limits.memoryMb.max}
 							step="64"
 							value={data.site.memoryMb}
-							class="mt-1 w-full rounded-md border border-line bg-panel-2 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-accent focus:outline-none"
+							class="mt-1 border-line bg-panel-2"
 						/>
 					</label>
-					<button
-						type="submit"
-						class="w-full rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40"
-						disabled={!running}>Apply limits</button
-					>
+					<Button type="submit" class="w-full" disabled={!running}>Apply limits</Button>
 				</form>
 			</Card>
 
@@ -232,15 +221,12 @@
 					{/each}
 				</ul>
 				<form method="POST" action="?/addDomain" class="mt-3 flex gap-2" use:enhance>
-					<input
+					<Input
 						name="hostname"
 						placeholder="extra.emdashhq.com"
-						class="min-w-0 flex-1 rounded-md border border-line bg-panel-2 px-2.5 py-1.5 text-xs focus:border-accent focus:outline-none"
+						class="min-w-0 flex-1 border-line bg-panel-2 text-xs"
 					/>
-					<button
-						type="submit"
-						class="rounded-md border border-line px-2.5 py-1.5 text-xs hover:bg-panel-2">Add</button
-					>
+					<Button variant="outline" size="sm" type="submit">Add</Button>
 				</form>
 			</Card>
 		</div>
@@ -288,23 +274,19 @@
 			<!-- Deployments -->
 			<Card title="Deployments" subtitle="Rebuild from the bundled template or a git repository">
 				<form method="POST" action="?/deploy" use:enhance class="flex flex-wrap items-center gap-2">
-					<input
+					<Input
 						name="gitUrl"
 						placeholder="https://github.com/you/site.git (optional)"
 						value={data.site.sourceRepo ?? ''}
-						class="min-w-0 flex-1 rounded-md border border-line bg-panel-2 px-2.5 py-1.5 font-mono text-xs focus:border-accent focus:outline-none"
+						class="min-w-0 flex-1 border-line bg-panel-2 font-mono text-xs"
 					/>
-					<input
+					<Input
 						name="gitRef"
 						placeholder="ref"
 						value={data.site.sourceRef ?? ''}
-						class="w-28 rounded-md border border-line bg-panel-2 px-2.5 py-1.5 font-mono text-xs focus:border-accent focus:outline-none"
+						class="w-28 border-line bg-panel-2 font-mono text-xs"
 					/>
-					<button
-						type="submit"
-						class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40"
-						disabled={!running || data.hasActiveJob}>Deploy</button
-					>
+					<Button type="submit" disabled={!running || data.hasActiveJob}>Deploy</Button>
 				</form>
 				{#if data.deployments.length > 0}
 					<div class="-mx-5 mt-3 divide-y divide-line/50 border-t border-line">
@@ -357,6 +339,16 @@
 									<span class="flex items-center gap-3">
 										<span class="text-xs text-mute">{fmtBytes(b.sizeBytes)}</span>
 										<StatusPill status={b.status} />
+										{#if b.status === 'complete'}
+											<a
+												href="/backups/{b.id}/download?decrypt=1"
+												class="text-xs text-accent hover:underline">tar.gz</a
+											>
+											<a
+												href="/backups/{b.id}/download"
+												class="text-xs text-mute hover:text-zinc-300">.enc</a
+											>
+										{/if}
 									</span>
 								</div>
 							{/each}

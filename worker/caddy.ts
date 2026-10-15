@@ -103,7 +103,7 @@ export async function getConfig(): Promise<{ config: CaddyConfig; etag?: string 
 	return { config: JSON.parse(res.body || '{}') as CaddyConfig, etag: res.etag };
 }
 
-async function loadConfig(cfg: CaddyConfig, etag?: string): Promise<void> {
+export async function loadConfig(cfg: CaddyConfig, etag?: string): Promise<void> {
 	const res = await request('POST', '/load', cfg, etag ? { 'If-Match': etag } : {});
 	// 200 = applied. 412-style conflicts (missing etag match) surface as 400/409.
 	if (res.status === 400 && /etag|concurrency/i.test(res.body)) {

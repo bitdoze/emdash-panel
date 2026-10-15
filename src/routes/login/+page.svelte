@@ -3,6 +3,7 @@
 	import { enhance } from '$app/forms';
 	import { authClient } from '#lib/auth-client';
 	import { goto } from '$app/navigation';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let { form }: { form: ActionData; data: PageData } = $props();
 	let submitting = $state(false);
@@ -75,23 +76,15 @@
 					class="mt-1 w-full rounded-md border border-line bg-panel-2 px-3 py-2 text-sm text-zinc-100 focus:border-accent focus:outline-none"
 				/>
 			</label>
-			<button
-				type="submit"
-				disabled={submitting}
-				class="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-50"
-			>
+			<Button type="submit" disabled={submitting} class="w-full">
 				{submitting ? 'Signing in…' : 'Sign in'}
-			</button>
+			</Button>
 		</form>
 
 		<div class="mt-4 border-t border-line pt-4">
-			<button
-				type="button"
-				onclick={signInWithPasskey}
-				class="w-full rounded-md border border-line px-4 py-2 text-sm text-zinc-300 hover:bg-panel-2"
-			>
+			<Button variant="outline" type="button" onclick={signInWithPasskey} class="w-full">
 				Sign in with a passkey
-			</button>
+			</Button>
 		</div>
 	</div>
 </div>

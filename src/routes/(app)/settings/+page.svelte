@@ -180,6 +180,46 @@
 	</section>
 
 	<section class="rounded-lg border border-line bg-panel p-5">
+		<h2 class="text-sm font-semibold text-zinc-300">Admin domains</h2>
+		<p class="mt-1 text-sm text-mute">
+			Additional hostnames that also serve this panel. DNS must resolve to this server —
+			certificates are issued automatically.
+		</p>
+		<div class="mt-3 space-y-1.5 text-sm">
+			<div class="flex items-center justify-between rounded-md border border-line bg-panel-2/50 px-3 py-2">
+				<span class="font-mono text-xs text-zinc-300">{data.panelHostname}</span>
+				<span class="text-xs text-mute">primary</span>
+			</div>
+			{#each data.panelDomains as d (d)}
+				<div class="flex items-center justify-between rounded-md border border-line px-3 py-2">
+					<a href="https://{d}" target="_blank" rel="noopener" class="font-mono text-xs text-accent hover:underline">{d}</a>
+					<form method="POST" action="?/removePanelDomain" use:enhance>
+						<input type="hidden" name="hostname" value={d} />
+						<button
+							class="rounded border border-bad/40 px-2 py-0.5 text-xs text-bad hover:bg-bad/10"
+							onclick={(e) => {
+								if (!confirm(`Remove ${d}?`)) e.preventDefault();
+							}}>Remove</button
+						>
+					</form>
+				</div>
+			{/each}
+		</div>
+		<form method="POST" action="?/addPanelDomain" class="mt-3 flex gap-2" use:enhance>
+			<input
+				name="hostname"
+				placeholder="admin.emdashhq.com"
+				class="min-w-0 flex-1 rounded-md border border-line bg-panel-2 px-3 py-2 font-mono text-sm focus:border-accent focus:outline-none"
+			/>
+			<button
+				type="submit"
+				class="rounded-md bg-accent px-3 py-2 text-sm font-medium text-white hover:brightness-110"
+				>Add domain</button
+			>
+		</form>
+	</section>
+
+	<section class="rounded-lg border border-line bg-panel p-5">
 		<h2 class="mb-3 text-sm font-semibold text-zinc-300">Audit log</h2>
 		{#if data.audit.length === 0}
 			<p class="text-sm text-mute">No events yet.</p>

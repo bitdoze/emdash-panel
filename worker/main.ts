@@ -19,6 +19,7 @@ import {
 	handleSiteUpdateLimits,
 	RetryableError
 } from './handlers/sites.js';
+import { handlePanelSyncDomains } from './handlers/panel.js';
 import { docker } from './docker.js';
 
 type Handler = (jobId: string, payload: never) => Promise<void>;
@@ -31,7 +32,8 @@ const HANDLERS: Record<string, Handler> = {
 	'site.complete_setup': handleSiteCompleteSetup as Handler,
 	'site.backup': handleSiteBackup as Handler,
 	'site.update_limits': handleSiteUpdateLimits as Handler,
-	'site.deploy': handleSiteDeploy as Handler
+	'site.deploy': handleSiteDeploy as Handler,
+	'panel.sync_domains': handlePanelSyncDomains as Handler
 };
 
 let running = true;

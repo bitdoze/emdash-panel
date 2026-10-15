@@ -2,6 +2,7 @@
 	import type { ActionData, PageData } from './$types';
 	import { enhance } from '$app/forms';
 	import Card from '#lib/components/Card.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let submitting = $state(false);
@@ -172,12 +173,8 @@
 			</div>
 		</Card>
 
-		<button
-			type="submit"
-			disabled={submitting}
-			class="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-accent/20 hover:brightness-110 disabled:opacity-50"
-		>
+		<Button type="submit" disabled={submitting} size="lg" class="w-full">
 			{submitting ? 'Creating…' : 'Create site'}
-		</button>
+		</Button>
 	</form>
 </div>
