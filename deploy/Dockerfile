@@ -20,6 +20,8 @@ RUN DATABASE_URL=file:/tmp/panel-build.db \
 	npm run build
 
 FROM node:22-bookworm-slim
+LABEL org.opencontainers.image.source="https://github.com/bitdoze/emdash-panel" \
+	org.opencontainers.image.licenses="MIT"
 ENV NODE_ENV=production \
 	PORT=3000 \
 	HOST=0.0.0.0
