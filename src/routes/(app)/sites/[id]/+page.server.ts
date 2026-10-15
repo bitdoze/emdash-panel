@@ -188,13 +188,61 @@ export const actions: Actions = {
 		const ref = String(form.get('gitRef') ?? '').trim();
 		if (repo && !isValidGitUrl(repo)) return fail(400, { error: 'Invalid repository URL' });
 		if (ref && !isValidGitRef(ref)) return fail(400, { error: 'Invalid ref (branch, tag, or SHA)' });
-		return runSiteAction(
+		const [deployment] = await db
+			.insert(deployments)
+			.values({ siteId: params.id, state: 'queued', gitUrl: repo || null, gitRef: ref || null })
+			.returning();
+		const res = await runSiteAction(
 			params.id,
 			'site.deploy',
-			{ gitUrl: repo || undefined, gitRef: ref || undefined },
+			{ deploymentId: deployment.id },
 			locals,
 			getClientAddress()
 		);
+		if ('started' in res && res.started) {
+			await db
+				.update(deployments)
+				.set({ jobId: res.started })
+				.where(eq(deployments.id, deployment.id));
+		} else {
+			await db
+				.update(deployments)
+				.set({ state: 'failed', error: 'Deployment job could not be queued', finishedAt: new Date() })
+				.where(eq(deployments.id, deployment.id));
+		}
+		return res;
+	},
+	redeploy: async ({ params, locals, getClientAddress }) => {
+		const site = (await db.select().from(sites).where(eq(sites.id, params.id)))[0];
+		if (!site || site.status === 'deleted') return fail(404, { error: 'Site not found' });
+		const [deployment] = await db
+			.insert(deployments)
+			.values({
+				siteId: site.id,
+				state: 'queued',
+				gitUrl: site.sourceRepo,
+				gitRef: site.sourceRef
+			})
+			.returning();
+		const res = await runSiteAction(
+			params.id,
+			'site.deploy',
+			{ deploymentId: deployment.id },
+			locals,
+			getClientAddress()
+		);
+		if ('started' in res && res.started) {
+			await db
+				.update(deployments)
+				.set({ jobId: res.started })
+				.where(eq(deployments.id, deployment.id));
+		} else {
+			await db
+				.update(deployments)
+				.set({ state: 'failed', error: 'Deployment job could not be queued', finishedAt: new Date() })
+				.where(eq(deployments.id, deployment.id));
+		}
+		return res;
 	},
 	addDomain: async ({ params, request, locals, getClientAddress }) => {
 		const site = (await db.select().from(sites).where(eq(sites.id, params.id)))[0];

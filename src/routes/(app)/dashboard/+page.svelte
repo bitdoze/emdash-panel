@@ -7,6 +7,7 @@
 	import MetricCard from '#lib/components/MetricCard.svelte';
 	import UsageBar from '#lib/components/UsageBar.svelte';
 	import Sparkline from '#lib/components/Sparkline.svelte';
+	import * as Table from '#lib/components/ui/table/index.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -129,50 +130,50 @@
 			<p class="py-4 text-center text-sm text-mute">No sites yet. Create your first EmDash site.</p>
 		{:else}
 			<div class="-mx-5 -my-4 overflow-x-auto">
-				<table class="w-full text-sm">
-					<thead class="border-b border-line text-left text-xs text-mute">
-						<tr>
-							<th class="px-5 py-2.5 font-medium">Site</th>
-							<th class="px-4 py-2.5 font-medium">Status</th>
-							<th class="px-4 py-2.5 font-medium">Engine</th>
-							<th class="w-40 px-4 py-2.5 font-medium">CPU</th>
-							<th class="w-48 px-4 py-2.5 font-medium">Memory</th>
-							<th class="px-4 py-2.5 text-right font-medium">Net I/O</th>
-						</tr>
-					</thead>
-					<tbody class="divide-y divide-line/60">
+				<Table.Root>
+					<Table.Header>
+						<Table.Row class="border-line hover:bg-transparent">
+							<Table.Head>Site</Table.Head>
+							<Table.Head>Status</Table.Head>
+							<Table.Head>Engine</Table.Head>
+							<Table.Head class="w-40">CPU</Table.Head>
+							<Table.Head class="w-48">Memory</Table.Head>
+							<Table.Head class="text-right">Net I/O</Table.Head>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
 						{#each siteUsage as { site, c } (site.id)}
-							<tr class="hover:bg-panel-2/50">
-								<td class="px-5 py-3">
+							<Table.Row class="border-line/60">
+								<Table.Cell>
 									<a href="/sites/{site.id}" class="font-medium text-zinc-100 hover:text-accent"
 										>{site.name}</a
 									>
-								</td>
-								<td class="px-4 py-3"><StatusPill status={site.status} /></td>
-								<td class="px-4 py-3 text-mute">{site.dbEngine}</td>
-								<td class="px-4 py-3">
+								</Table.Cell>
+								<Table.Cell><StatusPill status={site.status} /></Table.Cell>
+								<Table.Cell class="text-mute">{site.dbEngine}</Table.Cell>
+								<Table.Cell>
 									<UsageBar
 										value={c?.cpuPct ?? 0}
 										max={site.cpuMillicores / 10}
 										label="{c ? c.cpuPct?.toFixed(0) : '—'}%"
 										detail="{site.cpuMillicores / 1000} vCPU"
 									/>
-								</td>
-								<td class="px-4 py-3">
+								</Table.Cell>
+								<Table.Cell>
 									<UsageBar
 										value={c?.memBytes ?? 0}
 										max={site.memoryMb * 1024 * 1024}
 										label={c ? fmtBytes(c.memBytes) : '—'}
 										detail="{site.memoryMb} MiB"
 									/>
-								</td>
-								<td class="px-4 py-3 text-right text-xs text-mute">
+								</Table.Cell>
+								<Table.Cell class="text-right text-xs text-mute">
 									{#if c}↓ {fmtBytes(c.rxBytes)} · ↑ {fmtBytes(c.txBytes)}{:else}—{/if}
-								</td>
-							</tr>
+								</Table.Cell>
+							</Table.Row>
 						{/each}
-					</tbody>
-				</table>
+					</Table.Body>
+				</Table.Root>
 			</div>
 		{/if}
 	</Card>
@@ -204,24 +205,24 @@
 				<p class="py-4 text-center text-sm text-mute">No containers reporting.</p>
 			{:else}
 				<div class="-mx-5 -my-4 overflow-x-auto">
-					<table class="w-full text-sm">
-						<thead class="border-b border-line text-left text-xs text-mute">
-							<tr>
-								<th class="px-5 py-2.5 font-medium">Container</th>
-								<th class="px-4 py-2.5 font-medium">CPU</th>
-								<th class="px-4 py-2.5 font-medium">Memory</th>
-							</tr>
-						</thead>
-						<tbody class="divide-y divide-line/60">
+					<Table.Root>
+						<Table.Header>
+							<Table.Row class="border-line hover:bg-transparent">
+								<Table.Head>Container</Table.Head>
+								<Table.Head>CPU</Table.Head>
+								<Table.Head>Memory</Table.Head>
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
 							{#each containers as c (c.name)}
-								<tr class="hover:bg-panel-2/50">
-									<td class="px-5 py-2.5 font-mono text-xs">{c.name}</td>
-									<td class="px-4 py-2.5">{c.cpuPct?.toFixed(1) ?? '—'}%</td>
-									<td class="px-4 py-2.5">{fmtBytes(c.memBytes)}</td>
-								</tr>
+								<Table.Row class="border-line/60">
+									<Table.Cell class="font-mono text-xs">{c.name}</Table.Cell>
+									<Table.Cell>{c.cpuPct?.toFixed(1) ?? '—'}%</Table.Cell>
+									<Table.Cell>{fmtBytes(c.memBytes)}</Table.Cell>
+								</Table.Row>
 							{/each}
-						</tbody>
-					</table>
+						</Table.Body>
+					</Table.Root>
 				</div>
 			{/if}
 		</Card>

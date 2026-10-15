@@ -9,6 +9,7 @@
 	import UsageBar from '#lib/components/UsageBar.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -273,21 +274,37 @@
 
 			<!-- Deployments -->
 			<Card title="Deployments" subtitle="Rebuild from the bundled template or a git repository">
-				<form method="POST" action="?/deploy" use:enhance class="flex flex-wrap items-center gap-2">
-					<Input
-						name="gitUrl"
-						placeholder="https://github.com/you/site.git (optional)"
-						value={data.site.sourceRepo ?? ''}
-						class="min-w-0 flex-1 border-line bg-panel-2 font-mono text-xs"
-					/>
-					<Input
-						name="gitRef"
-						placeholder="ref"
-						value={data.site.sourceRef ?? ''}
-						class="w-28 border-line bg-panel-2 font-mono text-xs"
-					/>
-					<Button type="submit" disabled={!running || data.hasActiveJob}>Deploy</Button>
-				</form>
+				<div class="flex flex-wrap items-center gap-2">
+					<form method="POST" action="?/deploy" use:enhance class="flex min-w-0 flex-1 items-center gap-2">
+						<Input
+							name="gitUrl"
+							placeholder="https://github.com/you/site.git (optional)"
+							value={data.site.sourceRepo ?? ''}
+							class="min-w-0 flex-1 border-line bg-panel-2 font-mono text-xs"
+						/>
+						<Input
+							name="gitRef"
+							placeholder="ref"
+							value={data.site.sourceRef ?? ''}
+							class="w-28 border-line bg-panel-2 font-mono text-xs"
+						/>
+						<Button type="submit" disabled={!running || data.hasActiveJob}>Deploy</Button>
+					</form>
+					<form method="POST" action="?/redeploy" use:enhance>
+						<Button type="submit" variant="outline" disabled={!running || data.hasActiveJob}>
+							Redeploy
+						</Button>
+					</form>
+				</div>
+				<p class="mt-2 text-xs text-mute">
+					Deploy uses the fields above. Redeploy rebuilds the last-used source
+					{#if data.site.sourceRepo}
+						(<span class="font-mono">{data.site.sourceRepo}{data.site.sourceRef ? `#${data.site.sourceRef}` : ''}</span>)
+					{:else}
+						(bundled template)
+					{/if}
+					— pull in your latest git commits or rebuild the pinned EmDash template.
+				</p>
 				{#if data.deployments.length > 0}
 					<div class="-mx-5 mt-3 divide-y divide-line/50 border-t border-line">
 						{#each data.deployments as d (d.id)}
@@ -364,29 +381,20 @@
 						<h3 class="text-sm font-semibold text-bad">Delete site</h3>
 						<p class="mt-0.5 text-xs text-mute">Removes the container, routes and database.</p>
 					</div>
-					<form
-						method="POST"
+					<ConfirmDialog
+						title="Delete {data.site.name}?"
+						description="The container, Caddy routes and managed database are removed."
 						action="?/delete"
-						use:enhance
-						onsubmit={(e) => {
-							if (!confirm('Delete this site? Its container, routes and database will be removed.'))
-								e.preventDefault();
-						}}
+						confirmLabel="Delete site"
 					>
-						<input type="hidden" name="purgeData" value="off" />
-						<button
-							type="submit"
-							class="rounded-lg border border-bad/50 px-3 py-1.5 text-sm text-bad hover:bg-bad/10"
-							onclick={(e) => {
-								const input = (e.currentTarget as HTMLButtonElement).form!.querySelector(
-									'input[name=purgeData]'
-								) as HTMLInputElement;
-								input.value = confirm('Also delete the data volume and stored secrets?')
-									? 'on'
-									: 'off';
-							}}>Delete</button
-						>
-					</form>
+						{#snippet trigger()}
+							<Button variant="destructive">Delete</Button>
+						{/snippet}
+						<label class="mt-2 flex items-center gap-2 text-sm text-zinc-300">
+							<input type="checkbox" name="purgeData" class="accent-red-500" />
+							Also delete the data volume and stored secrets
+						</label>
+					</ConfirmDialog>
 				</div>
 			</div>
 		</div>

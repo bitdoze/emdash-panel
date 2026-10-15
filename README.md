@@ -22,6 +22,8 @@ MIT licensed. Status: early release, functional end-to-end.
   are configurable per site.
 - **Backups** — consistent snapshots (`VACUUM INTO` for SQLite, `pg_dump -Fc`
   for PostgreSQL) written as AES-256-GCM encrypted archives with a manifest.
+  Each site's page lists its backups with one-click downloads — either the raw
+  `.enc` archive or a server-side decrypted `.tar.gz`.
 - **Jobs** — all mutations run as durable jobs on a lease-based queue with
   retries, live log streaming (SSE), and per-site serialization.
 - **Resource limits** — per-site CPU (millicores) and memory caps, applied at
@@ -35,6 +37,10 @@ MIT licensed. Status: early release, functional end-to-end.
   site's data volume directly from the panel.
 - **Deployments** — rebuild a site from the bundled template or from a git
   repository (`repo.git#ref`) with automatic rollback on failed health checks.
+  **Deploy** takes an explicit repo/ref; **Redeploy** one-click rebuilds the
+  site's last-used source (pull latest git commits or rebuild the template).
+- **Panel domains** — additional hostnames that serve the panel UI can be
+  added/removed from Settings; Caddy routes are synced by a worker job.
 - **Auth** — single-owner Better Auth login with passkey support. Owner creation
   is gated by a one-time CLI-issued setup token; there is no public signup.
 - **Ops** — reconciliation loop repairs drifted routes/networks/containers,
@@ -100,7 +106,7 @@ are preserved.
 
 | Path | Purpose |
 | --- | --- |
-| `src/` | SvelteKit panel (routes, server libs, auth, job queue, secrets) |
+| `src/` | SvelteKit panel (Svelte 5 + Tailwind v4 + shadcn-svelte components) |
 | `worker/` | operations worker (job handlers, Docker, Caddy, reconciler, CLI) |
 | `templates/emdash-node/` | EmDash site image template (`EMDASH_DB=sqlite\|postgres` build arg) |
 | `deploy/` | Dockerfile, compose.yaml, Caddy bootstrap |

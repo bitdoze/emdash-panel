@@ -3,6 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import StatusPill from '#lib/components/StatusPill.svelte';
+	import * as Table from '#lib/components/ui/table/index.js';
 
 	let { data }: { data: PageData } = $props();
 	onMount(() => {
@@ -18,33 +19,31 @@
 			No jobs yet.
 		</p>
 	{:else}
-		<div class="overflow-hidden rounded-lg border border-line">
-			<table class="w-full text-sm">
-				<thead class="bg-panel text-left text-xs text-mute">
-					<tr>
-						<th class="px-4 py-2">Type</th>
-						<th class="px-4 py-2">Status</th>
-						<th class="px-4 py-2">Attempts</th>
-						<th class="px-4 py-2">Created</th>
-						<th class="px-4 py-2">Error</th>
-					</tr>
-				</thead>
-				<tbody class="divide-y divide-zinc-800">
-					{#each data.jobs as job (job.id)}
-						<tr class="hover:bg-panel/60">
-							<td class="px-4 py-2.5">
-								<a href="/jobs/{job.id}" class="font-mono text-xs text-accent hover:underline"
-									>{job.type}</a
-								>
-							</td>
-							<td class="px-4 py-2.5"><StatusPill status={job.status} /></td>
-							<td class="px-4 py-2.5 text-mute">{job.attempts}</td>
-							<td class="px-4 py-2.5 text-mute">{new Date(job.createdAt).toLocaleString()}</td>
-							<td class="max-w-60 truncate px-4 py-2.5 text-xs text-red-400">{job.error ?? ''}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
+		<Table.Root>
+			<Table.Header>
+				<Table.Row class="border-line hover:bg-transparent">
+					<Table.Head>Type</Table.Head>
+					<Table.Head>Status</Table.Head>
+					<Table.Head>Attempts</Table.Head>
+					<Table.Head>Created</Table.Head>
+					<Table.Head>Error</Table.Head>
+				</Table.Row>
+			</Table.Header>
+			<Table.Body>
+				{#each data.jobs as job (job.id)}
+					<Table.Row class="border-line/60">
+						<Table.Cell>
+							<a href="/jobs/{job.id}" class="font-mono text-xs text-accent hover:underline"
+								>{job.type}</a
+							>
+						</Table.Cell>
+						<Table.Cell><StatusPill status={job.status} /></Table.Cell>
+						<Table.Cell class="text-mute">{job.attempts}</Table.Cell>
+						<Table.Cell class="text-mute">{new Date(job.createdAt).toLocaleString()}</Table.Cell>
+						<Table.Cell class="max-w-60 truncate text-xs text-bad">{job.error ?? ''}</Table.Cell>
+					</Table.Row>
+				{/each}
+			</Table.Body>
+		</Table.Root>
 	{/if}
 </div>

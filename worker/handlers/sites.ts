@@ -761,7 +761,12 @@ export async function handleSiteDeploy(jobId: string, payload: { siteId: string;
 		.where(eq(deployments.id, dep.id));
 	await db
 		.update(sites)
-		.set({ image: tag, updatedAt: new Date() })
+		.set({
+			image: tag,
+			sourceRepo: dep.gitUrl ?? null,
+			sourceRef: dep.gitRef ?? null,
+			updatedAt: new Date()
+		})
 		.where(eq(sites.id, site.id));
 	await logJob(jobId, `Deployment live on ${tag}`);
 }

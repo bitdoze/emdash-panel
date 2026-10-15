@@ -1,26 +1,25 @@
 <script lang="ts">
+	import { Badge } from '#lib/components/ui/badge/index.js';
+
 	let { status }: { status: string } = $props();
 
-	const colors: Record<string, string> = {
-		ready: 'bg-emerald-950 text-emerald-300 border-emerald-800',
-		succeeded: 'bg-emerald-950 text-emerald-300 border-emerald-800',
-		complete: 'bg-emerald-950 text-emerald-300 border-emerald-800',
-		running: 'bg-sky-950 text-sky-300 border-sky-800',
-		provisioning: 'bg-sky-950 text-sky-300 border-sky-800',
-		queued: 'bg-slate-800 text-slate-300 border-slate-700',
-		pending: 'bg-slate-800 text-slate-300 border-slate-700',
-		awaiting_setup: 'bg-amber-950 text-amber-300 border-amber-800',
-		stopped: 'bg-slate-800 text-slate-400 border-slate-700',
-		failed: 'bg-red-950 text-red-300 border-red-800',
-		error: 'bg-red-950 text-red-300 border-red-800',
-		deleting: 'bg-red-950 text-red-300 border-red-800',
-		cancelled: 'bg-slate-800 text-slate-400 border-slate-700'
+	const tones: Record<string, string> = {
+		ready: 'border-ok/40 bg-ok/15 text-ok',
+		succeeded: 'border-ok/40 bg-ok/15 text-ok',
+		complete: 'border-ok/40 bg-ok/15 text-ok',
+		running: 'border-accent/40 bg-accent/15 text-accent',
+		provisioning: 'border-accent/40 bg-accent/15 text-accent',
+		queued: 'border-line bg-panel-2 text-zinc-300',
+		pending: 'border-line bg-panel-2 text-zinc-300',
+		awaiting_setup: 'border-warn/40 bg-warn/15 text-warn',
+		stopped: 'border-line bg-panel-2 text-mute',
+		failed: 'border-bad/40 bg-bad/15 text-bad',
+		error: 'border-bad/40 bg-bad/15 text-bad',
+		deleting: 'border-bad/40 bg-bad/15 text-bad',
+		cancelled: 'border-line bg-panel-2 text-mute'
 	};
 </script>
 
-<span
-	class="inline-block rounded-full border px-2 py-0.5 text-xs font-medium {colors[status] ??
-		'bg-slate-800 text-slate-300 border-slate-700'}"
->
+<Badge variant="outline" class={tones[status] ?? tones.queued}>
 	{status.replaceAll('_', ' ')}
-</span>
+</Badge>

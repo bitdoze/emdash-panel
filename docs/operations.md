@@ -50,13 +50,46 @@ SQLite may write over your changes. Stop the site first for DB surgery.
   site's `EMDASH_DB` build arg — offline and reproducible.
 - **Git source**: Docker builds `repo.git#ref` as a remote context (the repo
   must contain a Dockerfile at its root). Set the repo at site creation or per
-  deploy; the stored `sourceRepo`/`sourceRef` becomes the default for future
-  deploys.
+  deploy; on success the deployed source is stored back on the site as
+  `sourceRepo`/`sourceRef`, becoming the default for future deploys.
+
+Two entry points on the site page:
+
+- **Deploy** — uses the repo/ref fields in the form. Each build resolves the
+  ref fresh, so pushing new commits then pressing Deploy picks them up.
+- **Redeploy** — one click, no fields: rebuilds the site's *stored* source
+  (last-deployed git repo/ref, or the bundled template if none). Use this
+  after pushing to the site's repo or after `manage.sh update` rebuilt the
+  template images.
+
+Both enqueue `site.deploy` with a `deployments` row tracking state
+(`queued → building → switching → successful|failed`), the built image tag,
+and which deployment is currently live (`is_current`).
 
 On success the new image becomes current and the deployment row is marked; on
 a failed health check the worker rolls the container back to the prior image.
 
+## Updating sites to new code
+
+- **Site code lives in a git repo**: push commits, open the site, hit
+  **Redeploy** (or **Deploy** to change repo/ref). Docker's remote-context
+  build fetches the repo at that ref — no local clone is kept.
+- **Bundled-template sites**: the template pins EmDash in
+  `templates/emdash-node`. To move sites onto a new template version, run
+  `manage.sh update` (rebuilds the template images) then **Redeploy** each
+  site. Containers keep their old image until redeployed.
+- **Panel itself**: `manage.sh update` rebuilds and restarts the panel and
+  worker.
+
 ## Backups and restore
+
+The site page lists each site's backups (newest first) with status, size and
+two download links:
+
+- `tar.gz` — server-side decrypted plaintext archive (HTTPS; use when you
+  trust this session)
+- `.enc` — the raw AES-256-GCM ciphertext as stored on disk (safe to archive
+  elsewhere; decrypts only with `PANEL_MASTER_KEY`)
 
 `site.backup` produces an AES-256-GCM archive in `BACKUP_DIR`
 (`/opt/emdash/backups`) containing:
@@ -79,6 +112,14 @@ docker run --rm -v ems-vol-<id12>:/data -v /opt/emdash/backups:/b alpine \
 # Postgres site: create the DB fresh, then
 pg_restore -d postgresql://<role>:<pass>@emdashd-postgres:5432/<db> .ems-pg.dump
 ```
+
+## Admin domains
+
+Extra hostnames that serve the panel (alongside the primary `ORIGIN` host) are
+managed in **Settings → Admin domains**. Adding one enqueues
+`panel.sync_domains`, which rewrites the Caddy `panel` route's host matchers;
+the cert is issued on first request. Removing a host re-syncs the same way.
+The primary `ORIGIN` host is always included and can't be removed from the UI.
 
 ## Reconciliation
 
